@@ -31,42 +31,53 @@ export default async function handler(req, res) {
       return res.status(200).json(cachedData);
     }
 
-    // 2. Cache miss: Obtener los datos desde ElevenLabs
+    // --- Lógica de paginación ---
+    let allConversations = [];
+    let hasMore = true;
+    let nextCursor = null;
     const baseUrl = 'https://api.elevenlabs.io/v1/convai/conversations';
     const url = new URL(baseUrl);
 
-    // Añadir los filtros de fecha si existen
+    // Añadir filtros de fecha
     if (startDate) {
-      // Convertir la fecha a timestamp Unix en segundos (al inicio del día)
       const startTimestamp = Math.floor(new Date(startDate).getTime() / 1000);
       url.searchParams.append('call_start_after_unix', startTimestamp);
     }
     if (endDate) {
-      // Para la fecha de fin, tomamos el final del día para incluirlo completo
       const endOfDay = new Date(endDate);
       endOfDay.setHours(23, 59, 59, 999);
       const endTimestamp = Math.floor(endOfDay.getTime() / 1000);
       url.searchParams.append('call_start_before_unix', endTimestamp);
     }
-    url.searchParams.append('page_size', 100); // Obtener el máximo posible
+    url.searchParams.append('page_size', 100);
 
-    const response = await fetch(url.toString(), {
-      method: 'GET',
-      headers: {
-        'xi-api-key': apiKey,
-        'Content-Type': 'application/json'
+    while (hasMore) {
+      if (nextCursor) {
+        url.searchParams.set('cursor', nextCursor);
       }
-    });
 
-    if (!response.ok) {
-      const errorData = await response.json();
-      return res.status(response.status).json(errorData);
+      const response = await fetch(url.toString(), {
+        method: 'GET',
+        headers: { 'xi-api-key': apiKey, 'Content-Type': 'application/json' }
+      });
+
+      if (!response.ok) {
+        const errorData = await response.json();
+        // Devolvemos el error de la API de ElevenLabs para entender qué pasa
+        return res.status(response.status).json({ error: "Error desde la API de ElevenLabs", details: errorData });
+      }
+
+      const pageData = await response.json();
+      if (pageData.conversations) {
+        allConversations.push(...pageData.conversations);
+      }
+
+      hasMore = pageData.has_more;
+      nextCursor = pageData.next_cursor;
     }
+    // --- Fin de la lógica de paginación ---
 
-    const rawData = await response.json();
-
-    // 3. Procesar y agregar los datos para el dashboard
-    const stats = processConversations(rawData.conversations || []);
+    const stats = processConversations(allConversations);
     
     // 4. Guardar los datos procesados en el caché
     await kvClient.set(cacheKey, stats, { ex: CACHE_TTL_SECONDS });
