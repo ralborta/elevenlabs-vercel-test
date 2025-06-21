@@ -3,13 +3,13 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>API de ElevenLabs</title>
+    <title>Estadísticas de Agentes - ElevenLabs</title>
     <style>
         body {
             font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
             line-height: 1.6;
             color: #333;
-            max-width: 800px;
+            max-width: 1000px;
             margin: 40px auto;
             padding: 0 20px;
             background-color: #fafafa;
@@ -25,59 +25,91 @@
             border-bottom: 2px solid #eee;
             padding-bottom: 10px;
         }
-        p {
-            margin-bottom: 20px;
+        table {
+            width: 100%;
+            border-collapse: collapse;
+            margin-top: 20px;
         }
-        code {
-            background-color: #e8e8e8;
-            padding: 3px 6px;
-            border-radius: 4px;
-            font-family: "SFMono-Regular", Consolas, "Liberation Mono", Menlo, Courier, monospace;
+        th, td {
+            padding: 12px;
+            text-align: left;
+            border-bottom: 1px solid #ddd;
         }
-        .endpoint {
-            margin-bottom: 15px;
-            padding: 15px;
-            border: 1px solid #ddd;
-            border-radius: 5px;
+        th {
+            background-color: #f2f2f2;
         }
-        .method {
-            font-weight: bold;
-            display: inline-block;
-            width: 50px;
-            color: #fff;
-            padding: 5px 8px;
-            border-radius: 4px;
+        tr:hover {
+            background-color: #f5f5f5;
+        }
+        #loading {
             text-align: center;
+            padding: 20px;
+            font-size: 1.2em;
         }
-        .get { background-color: #007bff; }
-        .post { background-color: #28a745; }
     </style>
 </head>
 <body>
     <div class="container">
-        <h1>🚀 API Proxy para ElevenLabs</h1>
-        <p>Este proyecto funciona como un intermediario (proxy) para la API de ElevenLabs, desplegado en Vercel.</p>
-        
-        <h2>Endpoints Disponibles</h2>
-
-        <div class="endpoint">
-            <span class="method get">GET</span>
-            <code>/api/voices</code>
-            <p>Obtiene la lista de todas las voces disponibles en ElevenLabs.</p>
+        <h1>📊 Estadísticas de Llamadas de Agentes</h1>
+        <div id="stats-table">
+            <p id="loading">Cargando estadísticas...</p>
+            <table>
+                <thead>
+                    <tr>
+                        <th>Agente</th>
+                        <th>Fecha y Hora</th>
+                        <th>Duración (segs)</th>
+                        <th>Mensajes</th>
+                        <th>Estado</th>
+                    </tr>
+                </thead>
+                <tbody id="stats-body">
+                    <!-- Los datos se insertarán aquí dinámicamente -->
+                </tbody>
+            </table>
         </div>
-
-        <div class="endpoint">
-            <span class="method get">GET</span>
-            <code>/api/elevenlabs</code>
-            <p>Obtiene el historial de conversaciones de voz.</p>
-        </div>
-        
-        <div class="endpoint">
-            <span class="method post">POST</span>
-            <code>/api/elevenlabs</code>
-            <p>Crea una nueva conversación de voz. Requiere <code>text</code> y <code>voice_id</code> en el cuerpo (body) de la solicitud.</p>
-        </div>
-
     </div>
+
+    <script>
+        document.addEventListener('DOMContentLoaded', fetchStats);
+
+        async function fetchStats() {
+            try {
+                const response = await fetch('/api/elevenlabs');
+                if (!response.ok) {
+                    throw new Error(`Error en la API: ${response.statusText}`);
+                }
+                const data = await response.json();
+                
+                const loadingElement = document.getElementById('loading');
+                loadingElement.style.display = 'none';
+
+                const tableBody = document.getElementById('stats-body');
+                
+                if (data.conversations && data.conversations.length > 0) {
+                    data.conversations.forEach(convo => {
+                        const row = document.createElement('tr');
+
+                        const startDate = new Date(convo.start_time_unix_secs * 1000);
+
+                        row.innerHTML = `
+                            <td>${convo.agent_name || 'N/A'}</td>
+                            <td>${startDate.toLocaleString()}</td>
+                            <td>${convo.call_duration_secs}</td>
+                            <td>${convo.message_count}</td>
+                            <td>${convo.status}</td>
+                        `;
+                        tableBody.appendChild(row);
+                    });
+                } else {
+                     document.getElementById('stats-table').innerHTML = '<p>No se encontraron conversaciones.</p>';
+                }
+
+            } catch (error) {
+                console.error('Error al obtener las estadísticas:', error);
+                document.getElementById('loading').innerText = 'Error al cargar los datos. Revisa la consola para más detalles.';
+            }
+        }
+    </script>
 </body>
 </html> 
