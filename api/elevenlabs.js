@@ -16,10 +16,15 @@ export default async function handler(req, res) {
 
   if (missingVars.length > 0) {
     const errorMsg = `Error: Faltan las siguientes variables de entorno en Vercel: ${missingVars.join(', ')}.`;
+    const availableVars = Object.keys(process.env);
+    const details = `Por favor, revisa la configuración en Vercel. Variables de entorno que SÍ se detectaron (${availableVars.length}): [${availableVars.join(', ')}]`;
+
     console.error(errorMsg);
+    console.log('Available ENV VARS:', availableVars);
+
     return res.status(500).json({ 
         error: errorMsg,
-        details: 'Por favor, ve a la configuración de tu proyecto en Vercel, sección "Settings" > "Environment Variables" y asegúrate de que están definidas y asignadas al entorno de Producción.'
+        details: details
     });
   }
 
