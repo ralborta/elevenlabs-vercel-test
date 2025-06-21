@@ -6,11 +6,29 @@ export default async function handler(req, res) {
     return res.status(400).json({ error: 'API key de ElevenLabs no configurada' });
   }
 
-  // El endpoint correcto para obtener el historial de conversaciones de agentes
-  const url = 'https://api.elevenlabs.io/v1/convai/conversations';
+  // Leer los parámetros de fecha desde la query de la solicitud
+  const { startDate, endDate } = req.query;
+
+  // Construir la URL base
+  const baseUrl = 'https://api.elevenlabs.io/v1/convai/conversations';
+  const url = new URL(baseUrl);
+
+  // Añadir los filtros de fecha si existen
+  if (startDate) {
+    // Convertir la fecha a timestamp Unix en segundos (al inicio del día)
+    const startTimestamp = Math.floor(new Date(startDate).getTime() / 1000);
+    url.searchParams.append('call_start_after_unix', startTimestamp);
+  }
+  if (endDate) {
+    // Para la fecha de fin, tomamos el final del día para incluirlo completo
+    const endOfDay = new Date(endDate);
+    endOfDay.setHours(23, 59, 59, 999);
+    const endTimestamp = Math.floor(endOfDay.getTime() / 1000);
+    url.searchParams.append('call_start_before_unix', endTimestamp);
+  }
 
   try {
-    const response = await fetch(url, {
+    const response = await fetch(url.toString(), {
       method: 'GET',
       headers: {
         'xi-api-key': apiKey,

@@ -25,6 +25,32 @@
             border-bottom: 2px solid #eee;
             padding-bottom: 10px;
         }
+        .filters {
+            margin-bottom: 20px;
+            display: flex;
+            gap: 15px;
+            align-items: center;
+        }
+        .filters label {
+            font-weight: bold;
+        }
+        .filters input[type="date"] {
+            padding: 8px;
+            border: 1px solid #ddd;
+            border-radius: 4px;
+        }
+        .filters button {
+            padding: 10px 15px;
+            border: none;
+            background-color: #007bff;
+            color: white;
+            border-radius: 4px;
+            cursor: pointer;
+            font-weight: bold;
+        }
+        .filters button:hover {
+            background-color: #0056b3;
+        }
         table {
             width: 100%;
             border-collapse: collapse;
@@ -51,6 +77,15 @@
 <body>
     <div class="container">
         <h1>📊 Estadísticas de Llamadas de Agentes</h1>
+        
+        <div class="filters">
+            <label for="startDate">Desde:</label>
+            <input type="date" id="startDate">
+            <label for="endDate">Hasta:</label>
+            <input type="date" id="endDate">
+            <button id="filterButton">Filtrar</button>
+        </div>
+
         <div id="stats-table">
             <p id="loading">Cargando estadísticas...</p>
             <table>
@@ -63,38 +98,48 @@
                         <th>Estado</th>
                     </tr>
                 </thead>
-                <tbody id="stats-body">
-                    <!-- Los datos se insertarán aquí dinámicamente -->
-                </tbody>
+                <tbody id="stats-body"></tbody>
             </table>
         </div>
     </div>
 
     <script>
-        document.addEventListener('DOMContentLoaded', fetchStats);
+        document.addEventListener('DOMContentLoaded', () => {
+            fetchStats(); // Carga inicial
+            document.getElementById('filterButton').addEventListener('click', fetchStats);
+        });
 
         async function fetchStats() {
+            const tableBody = document.getElementById('stats-body');
+            const loadingElement = document.getElementById('loading');
+            
+            tableBody.innerHTML = ''; // Limpiar tabla anterior
+            loadingElement.style.display = 'block';
+            loadingElement.innerText = 'Cargando estadísticas...';
+
+            const startDate = document.getElementById('startDate').value;
+            const endDate = document.getElementById('endDate').value;
+            
+            const apiUrl = new URL('/api/elevenlabs', window.location.origin);
+            if (startDate) apiUrl.searchParams.append('startDate', startDate);
+            if (endDate) apiUrl.searchParams.append('endDate', endDate);
+
             try {
-                const response = await fetch('/api/elevenlabs');
+                const response = await fetch(apiUrl.toString());
                 if (!response.ok) {
-                    throw new Error(`Error en la API: ${response.statusText}`);
+                    throw new Error(`Error en la API: ${response.status} ${response.statusText}`);
                 }
                 const data = await response.json();
                 
-                const loadingElement = document.getElementById('loading');
-                loadingElement.style.display = 'none';
-
-                const tableBody = document.getElementById('stats-body');
-                
                 if (data.conversations && data.conversations.length > 0) {
+                    loadingElement.style.display = 'none';
                     data.conversations.forEach(convo => {
                         const row = document.createElement('tr');
-
                         const startDate = new Date(convo.start_time_unix_secs * 1000);
 
                         row.innerHTML = `
                             <td>${convo.agent_name || 'N/A'}</td>
-                            <td>${startDate.toLocaleString()}</td>
+                            <td>${startDate.toLocaleString('es-ES')}</td>
                             <td>${convo.call_duration_secs}</td>
                             <td>${convo.message_count}</td>
                             <td>${convo.status}</td>
@@ -102,12 +147,12 @@
                         tableBody.appendChild(row);
                     });
                 } else {
-                     document.getElementById('stats-table').innerHTML = '<p>No se encontraron conversaciones.</p>';
+                    loadingElement.innerText = 'No se encontraron conversaciones para el rango seleccionado.';
                 }
 
             } catch (error) {
                 console.error('Error al obtener las estadísticas:', error);
-                document.getElementById('loading').innerText = 'Error al cargar los datos. Revisa la consola para más detalles.';
+                loadingElement.innerText = 'Error al cargar los datos. Revisa la consola para más detalles.';
             }
         }
     </script>
