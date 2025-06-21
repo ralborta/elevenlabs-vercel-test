@@ -4,132 +4,110 @@ import { createClient } from '@vercel/kv';
 const CACHE_TTL_SECONDS = 300;
 
 export default async function handler(req, res) {
-  const apiKey = process.env.ELEVENLABS_API_KEY;
-
-  // Validar que la API key esté presente
-  if (!apiKey) {
-    return res.status(400).json({ error: 'API key de ElevenLabs no configurada' });
-  }
-
-  // Inicializar cliente de Vercel KV
-  const kvClient = createClient({
-    url: process.env.KV_URL,
-    token: process.env.KV_TOKEN,
-  });
-
-  // Leer los parámetros de fecha desde la query de la solicitud
-  const { startDate, endDate } = req.query;
-
-  // Clave de caché versionada para forzar una actualización
-  const cacheKey = `v2:conversations:${startDate || 'all'}:${endDate || 'all'}`;
+  const debugInfo = {};
 
   try {
-    // 1. Intentar obtener los datos desde el caché
-    let cachedData = await kvClient.get(cacheKey);
-    if (cachedData) {
-      // Cache hit: Devolver los datos cacheados
-      return res.status(200).json(cachedData);
+    const apiKey = process.env.ELEVENLABS_API_KEY;
+    const kvUrl = process.env.KV_URL;
+    const kvToken = process.env.KV_TOKEN;
+    
+    debugInfo.env = {
+        hasApiKey: !!apiKey,
+        hasKvUrl: !!kvUrl,
+        hasKvToken: !!kvToken,
+    };
+
+    if (!apiKey || !kvUrl || !kvToken) {
+        return res.status(500).json({ 
+            error: 'Faltan variables de entorno en el servidor de Vercel.', 
+            details: 'Asegúrate de que la API Key de ElevenLabs y la base de datos de Vercel KV están conectadas correctamente al proyecto.',
+            debug: debugInfo 
+        });
     }
 
-    // --- Lógica de paginación ---
+    const kvClient = createClient({ url: kvUrl, token: kvToken });
+    const { startDate, endDate } = req.query;
+    const cacheKey = `v2:conversations:${startDate || 'all'}:${endDate || 'all'}`;
+    debugInfo.cache = { key: cacheKey, hit: false };
+
+    let cachedData = await kvClient.get(cacheKey);
+    if (cachedData) {
+        debugInfo.cache.hit = true;
+        cachedData.debug = debugInfo;
+        return res.status(200).json(cachedData);
+    }
+
     let allConversations = [];
     let hasMore = true;
     let nextCursor = null;
+    let pagesFetched = 0;
     const baseUrl = 'https://api.elevenlabs.io/v1/convai/conversations';
-    const url = new URL(baseUrl);
-
-    // Añadir filtros de fecha
-    if (startDate) {
-      const startTimestamp = Math.floor(new Date(startDate).getTime() / 1000);
-      url.searchParams.append('call_start_after_unix', startTimestamp);
-    }
-    if (endDate) {
-      const endOfDay = new Date(endDate);
-      endOfDay.setHours(23, 59, 59, 999);
-      const endTimestamp = Math.floor(endOfDay.getTime() / 1000);
-      url.searchParams.append('call_start_before_unix', endTimestamp);
-    }
-    url.searchParams.append('page_size', 100);
-
+    
     while (hasMore) {
-      if (nextCursor) {
-        url.searchParams.set('cursor', nextCursor);
-      }
+        const url = new URL(baseUrl);
+        if (startDate) url.searchParams.append('call_start_after_unix', Math.floor(new Date(startDate).getTime() / 1000));
+        if (endDate) {
+            const endOfDay = new Date(endDate);
+            endOfDay.setHours(23, 59, 59, 999);
+            url.searchParams.append('call_start_before_unix', Math.floor(endOfDay.getTime() / 1000));
+        }
+        url.searchParams.append('page_size', 100);
+        if (nextCursor) url.searchParams.set('cursor', nextCursor);
+        
+        debugInfo.lastApiUrl = url.toString();
 
-      const response = await fetch(url.toString(), {
-        method: 'GET',
-        headers: { 'xi-api-key': apiKey, 'Content-Type': 'application/json' }
-      });
+        const response = await fetch(url.toString(), {
+            method: 'GET',
+            headers: { 'xi-api-key': apiKey, 'Content-Type': 'application/json' }
+        });
+        
+        pagesFetched++;
+        const pageData = await response.json();
 
-      if (!response.ok) {
-        const errorData = await response.json();
-        // Devolvemos el error de la API de ElevenLabs para entender qué pasa
-        return res.status(response.status).json({ error: "Error desde la API de ElevenLabs", details: errorData });
-      }
+        if (!response.ok) {
+            throw new Error(`Error de ElevenLabs: ${response.status} - ${JSON.stringify(pageData)}`);
+        }
 
-      const pageData = await response.json();
-      if (pageData.conversations) {
-        allConversations.push(...pageData.conversations);
-      }
-
-      hasMore = pageData.has_more;
-      nextCursor = pageData.next_cursor;
+        if (pageData.conversations) {
+            allConversations.push(...pageData.conversations);
+        }
+        hasMore = pageData.has_more;
+        nextCursor = pageData.next_cursor;
     }
-    // --- Fin de la lógica de paginación ---
-
+    
+    debugInfo.api = { pagesFetched, totalConversationsFound: allConversations.length };
+    
     const stats = processConversations(allConversations);
-    
-    // 4. Guardar los datos procesados en el caché
+    stats.debug = debugInfo;
+
     await kvClient.set(cacheKey, stats, { ex: CACHE_TTL_SECONDS });
-    
-    // 5. Devolver los datos procesados al cliente
     return res.status(200).json(stats);
 
   } catch (error) {
     console.error('Error en el backend:', error);
-    return res.status(500).json({ error: 'Error interno del servidor' });
+    debugInfo.error = error.message;
+    return res.status(500).json({ error: 'Error interno del servidor', debug: debugInfo });
   }
 }
 
 function processConversations(conversations) {
-  const totalCalls = conversations.length;
-  if (totalCalls === 0) {
-    return {
-      totalCalls: 0,
-      totalDurationSecs: 0,
-      averageDurationSecs: 0,
-      callsByAgent: {},
-      callsOverTime: [],
-      conversations: []
-    };
-  }
-
-  const totalDurationSecs = conversations.reduce((sum, conv) => sum + (conv.call_duration_secs || 0), 0);
-  const averageDurationSecs = totalDurationSecs / totalCalls;
-
-  const callsByAgent = conversations.reduce((acc, conv) => {
-    const agentName = conv.agent_name || 'Desconocido';
-    acc[agentName] = (acc[agentName] || 0) + 1;
-    return acc;
-  }, {});
-  
-  const callsOverTime = conversations.reduce((acc, conv) => {
-    const date = new Date(conv.start_time_unix_secs * 1000).toISOString().split('T')[0];
-    const existing = acc.find(item => item.date === date);
-    if (existing) {
-      existing.count++;
-    } else {
-      acc.push({ date: date, count: 1 });
+    const totalCalls = conversations.length;
+    if (totalCalls === 0) {
+        return { totalCalls: 0, totalDurationSecs: 0, averageDurationSecs: 0, callsByAgent: {}, callsOverTime: [], conversations: [] };
     }
-    return acc;
-  }, []).sort((a, b) => new Date(a.date) - new Date(b.date));
+    const totalDurationSecs = conversations.reduce((sum, conv) => sum + (conv.call_duration_secs || 0), 0);
+    const averageDurationSecs = totalDurationSecs / totalCalls;
+    const callsByAgent = conversations.reduce((acc, conv) => {
+        const agentName = conv.agent_name || 'Desconocido';
+        acc[agentName] = (acc[agentName] || 0) + 1;
+        return acc;
+    }, {});
+    const callsOverTime = conversations.reduce((acc, conv) => {
+        const date = new Date(conv.start_time_unix_secs * 1000).toISOString().split('T')[0];
+        const existing = acc.find(item => item.date === date);
+        if (existing) { existing.count++; } else { acc.push({ date: date, count: 1 }); }
+        return acc;
+    }, []).sort((a, b) => new Date(a.date) - new Date(b.date));
 
-  return {
-    totalCalls,
-    totalDurationSecs,
-    averageDurationSecs: Math.round(averageDurationSecs),
-    callsByAgent,
-    callsOverTime,
-    conversations: conversations.sort((a,b) => b.start_time_unix_secs - a.start_time_unix_secs)
-  };
+    return { totalCalls, totalDurationSecs, averageDurationSecs: Math.round(averageDurationSecs), callsByAgent, callsOverTime, conversations: conversations.sort((a, b) => b.start_time_unix_secs - a.start_time_unix_secs) };
 } 

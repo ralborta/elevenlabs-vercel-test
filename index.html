@@ -27,6 +27,17 @@
         th { background-color: #f2f2f2; }
         tr:hover { background-color: #f5f5f5; }
         #loading { text-align: center; padding: 40px; font-size: 1.2em; }
+        #debug-info {
+            margin-top: 20px;
+            padding: 15px;
+            background-color: #f8f9fa;
+            border: 1px solid #dee2e6;
+            border-radius: 4px;
+            white-space: pre-wrap;
+            font-family: "SFMono-Regular", Consolas, "Liberation Mono", Menlo, Courier, monospace;
+            font-size: 13px;
+            color: #212529;
+        }
     </style>
 </head>
 <body>
@@ -55,6 +66,10 @@
             </table>
         </div>
         <p id="loading">Cargando estadísticas...</p>
+        <div id="debug-container" style="display: none;">
+            <h2>Información de Depuración</h2>
+            <pre id="debug-info"></pre>
+        </div>
     </div>
 
     <script>
@@ -68,7 +83,12 @@
         async function fetchStats() {
             const content = document.getElementById('dashboard-content');
             const loading = document.getElementById('loading');
+            const debugContainer = document.getElementById('debug-container');
+            const debugInfo = document.getElementById('debug-info');
+
+            // Resetear UI
             content.style.display = 'none';
+            debugContainer.style.display = 'none';
             loading.style.display = 'block';
             loading.innerText = 'Cargando estadísticas...';
 
@@ -81,6 +101,12 @@
             try {
                 const response = await fetch(apiUrl.toString());
                 const data = await response.json();
+
+                // Siempre mostrar info de depuración
+                if (data.debug) {
+                    debugInfo.textContent = JSON.stringify(data.debug, null, 2);
+                    debugContainer.style.display = 'block';
+                }
 
                 if (data.totalCalls > 0) {
                     updateKPIs(data);
