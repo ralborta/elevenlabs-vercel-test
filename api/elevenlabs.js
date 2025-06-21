@@ -1,11 +1,13 @@
 import { createClient } from '@vercel/kv';
+import { kv } from '@vercel/kv';
 
 const CACHE_TTL_SECONDS = 300; // 5 minutos de caché
 
+// Force redeploy
 export default async function handler(req, res) {
   try {
     const apiKey = process.env.ELEVENLABS_API_KEY;
-    const kvUrl = process.env.KV_URL;
+    const kvUrl = process.env.KV_URL || process.env.KV_REST_API_URL;
     const kvToken = process.env.KV_TOKEN;
 
     if (!apiKey || !kvUrl || !kvToken) {
