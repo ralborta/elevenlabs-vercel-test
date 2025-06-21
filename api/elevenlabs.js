@@ -20,8 +20,8 @@ export default async function handler(req, res) {
   // Leer los parámetros de fecha desde la query de la solicitud
   const { startDate, endDate } = req.query;
 
-  // Crear una clave de caché única basada en el rango de fechas
-  const cacheKey = `conversations:${startDate || 'all'}:${endDate || 'all'}`;
+  // Clave de caché versionada para forzar una actualización
+  const cacheKey = `v2:conversations:${startDate || 'all'}:${endDate || 'all'}`;
 
   try {
     // 1. Intentar obtener los datos desde el caché
