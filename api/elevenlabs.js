@@ -5,54 +5,38 @@ const CACHE_TTL_SECONDS = 300; // 5 minutos de caché
 
 export default async function handler(req, res) {
   try {
-    // Obtener la versión solicitada (por defecto v1)
     const { version = DEFAULT_VERSION } = req.query;
     const versionConfig = getVersionConfig(version);
-    
-    // Redirigir a la versión específica
-    const targetUrl = new URL(versionConfig.endpoint, `${req.headers['x-forwarded-proto'] || 'https'}://${req.headers.host}`);
-    
-    // Copiar los query parameters excepto 'version'
-    const queryParams = new URLSearchParams();
-    Object.keys(req.query).forEach(key => {
-      if (key !== 'version') {
-        queryParams.append(key, req.query[key]);
-      }
-    });
-    
-    if (queryParams.toString()) {
-      targetUrl.search = queryParams.toString();
+
+    if (!versionConfig || !versionConfig.name) {
+      throw new Error(`Versión no configurada o inválida: ${version}`);
     }
-    
-    // Hacer la llamada interna a la versión específica
-    const response = await fetch(targetUrl.toString(), {
-      method: req.method,
-      headers: {
-        'Content-Type': 'application/json',
-        'Authorization': req.headers.authorization || '',
-        'xi-api-key': req.headers['xi-api-key'] || ''
-      },
-      body: req.method !== 'GET' ? JSON.stringify(req.body) : undefined
-    });
-    
-    const data = await response.json();
-    
-    // Agregar información de la versión en la respuesta
-    res.status(response.status).json({
-      ...data,
-      _version: versionConfig.name,
-      _versionInfo: {
-        status: versionConfig.status,
-        description: versionConfig.description
-      }
-    });
-    
+
+    // Importa dinámicamente el handler de la versión solicitada
+    // La ruta es relativa a la ubicación de este archivo
+    const versionModule = await import(`./versions/${versionConfig.name}/elevenlabs.js`);
+    const versionHandler = versionModule.default;
+
+    if (typeof versionHandler !== 'function') {
+      throw new Error(`El handler para la versión '${versionConfig.name}' no es una función.`);
+    }
+
+    console.log(`Enrutando a la versión de la API: ${versionConfig.name}`);
+
+    // Eliminamos el parámetro 'version' de la query para que no interfiera
+    // con la lógica del handler específico de la versión.
+    const { version: _, ...originalQuery } = req.query;
+    req.query = originalQuery;
+
+    // Ejecuta directamente el handler de la versión correspondiente
+    return await versionHandler(req, res);
+
   } catch (error) {
-    console.error('Error en el router de versiones:', error);
+    console.error('Error en el router de versiones:', error.stack);
     res.status(500).json({ 
-      error: 'Error interno del servidor',
+      error: 'Error crítico en el router de la API.',
       details: error.message,
-      _version: DEFAULT_VERSION
+      _version: 'router'
     });
   }
 }
