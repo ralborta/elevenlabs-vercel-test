@@ -102,21 +102,38 @@ function processConversations(conversations) {
     };
   }
 
-  const totalDurationSeconds = conversations.reduce((acc, call) => acc + (call.end_time - call.start_time), 0);
+  // Filtra conversaciones para asegurar que tengan timestamps válidos y numéricos
+  const validConversations = conversations.filter(call => {
+    const hasValidTimestamps = call && 
+                               typeof call.start_time === 'number' && 
+                               typeof call.end_time === 'number' &&
+                               !isNaN(call.start_time) && 
+                               !isNaN(call.end_time);
+    if (!hasValidTimestamps) {
+      console.warn('Se ignora una conversación por tener timestamps inválidos:', call);
+    }
+    return hasValidTimestamps;
+  });
+
+  if (validConversations.length === 0) {
+    return { totalCalls: 0, avgDurationSeconds: 0, totalDurationSeconds: 0, callsByProvider: {}, callsOverTime: {}, detailedCalls: [] };
+  }
+
+  const totalDurationSeconds = validConversations.reduce((acc, call) => acc + (call.end_time - call.start_time), 0);
   
-  const callsByProvider = conversations.reduce((acc, call) => {
+  const callsByProvider = validConversations.reduce((acc, call) => {
     const provider = call.provider || 'Desconocido';
     acc[provider] = (acc[provider] || 0) + 1;
     return acc;
   }, {});
 
-  const callsOverTime = conversations.reduce((acc, call) => {
+  const callsOverTime = validConversations.reduce((acc, call) => {
     const date = new Date(call.start_time * 1000).toISOString().split('T')[0]; // Agrupar por día
     acc[date] = (acc[date] || 0) + 1;
     return acc;
   }, {});
 
-  const detailedCalls = conversations.map(call => ({
+  const detailedCalls = validConversations.map(call => ({
     id: call.conversation_id,
     startTime: new Date(call.start_time * 1000).toLocaleString(),
     endTime: new Date(call.end_time * 1000).toLocaleString(),
@@ -125,8 +142,8 @@ function processConversations(conversations) {
   })).sort((a, b) => new Date(b.startTime) - new Date(a.startTime));
 
   return {
-    totalCalls: conversations.length,
-    avgDurationSeconds: totalDurationSeconds / conversations.length,
+    totalCalls: validConversations.length,
+    avgDurationSeconds: totalDurationSeconds / validConversations.length,
     totalDurationSeconds: totalDurationSeconds,
     callsByProvider: callsByProvider,
     callsOverTime: Object.fromEntries(Object.entries(callsOverTime).sort()), // Ordenar por fecha
