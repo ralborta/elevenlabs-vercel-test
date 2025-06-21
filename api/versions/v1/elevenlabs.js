@@ -34,7 +34,9 @@ export default async function handler(req, res) {
     */
 
     const { startDate, endDate } = req.query;
-    const allConversations = await fetchAllPages(apiKey, startDate, endDate);
+    // IGNORANDO FILTROS TEMPORALMENTE PARA DEPURACIÓN
+    console.log(`Recibidas fechas de filtro (ignoradas por ahora): ${startDate}, ${endDate}`);
+    const allConversations = await fetchAllPages(apiKey, null, null);
     const processedData = processConversations(allConversations);
 
     // Guardado en caché deshabilitado temporalmente
