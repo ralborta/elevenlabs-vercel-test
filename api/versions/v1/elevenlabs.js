@@ -37,6 +37,10 @@ export default async function handler(req, res) {
     // IGNORANDO FILTROS TEMPORALMENTE PARA DEPURACIÓN
     console.log(`Recibidas fechas de filtro (ignoradas por ahora): ${startDate}, ${endDate}`);
     const allConversations = await fetchAllPages(apiKey, null, null);
+    
+    // Log de espía para ver la estructura de datos real
+    console.log("DATOS CRUDOS RECIBIDOS DE ELEVENLABS:", JSON.stringify(allConversations, null, 2));
+
     const processedData = processConversations(allConversations);
 
     // Guardado en caché deshabilitado temporalmente
