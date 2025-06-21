@@ -1,0 +1,83 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>API de ElevenLabs</title>
+    <style>
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+            line-height: 1.6;
+            color: #333;
+            max-width: 800px;
+            margin: 40px auto;
+            padding: 0 20px;
+            background-color: #fafafa;
+        }
+        .container {
+            background-color: #fff;
+            padding: 30px;
+            border-radius: 8px;
+            box-shadow: 0 4px 8px rgba(0,0,0,0.05);
+        }
+        h1 {
+            color: #111;
+            border-bottom: 2px solid #eee;
+            padding-bottom: 10px;
+        }
+        p {
+            margin-bottom: 20px;
+        }
+        code {
+            background-color: #e8e8e8;
+            padding: 3px 6px;
+            border-radius: 4px;
+            font-family: "SFMono-Regular", Consolas, "Liberation Mono", Menlo, Courier, monospace;
+        }
+        .endpoint {
+            margin-bottom: 15px;
+            padding: 15px;
+            border: 1px solid #ddd;
+            border-radius: 5px;
+        }
+        .method {
+            font-weight: bold;
+            display: inline-block;
+            width: 50px;
+            color: #fff;
+            padding: 5px 8px;
+            border-radius: 4px;
+            text-align: center;
+        }
+        .get { background-color: #007bff; }
+        .post { background-color: #28a745; }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>🚀 API Proxy para ElevenLabs</h1>
+        <p>Este proyecto funciona como un intermediario (proxy) para la API de ElevenLabs, desplegado en Vercel.</p>
+        
+        <h2>Endpoints Disponibles</h2>
+
+        <div class="endpoint">
+            <span class="method get">GET</span>
+            <code>/api/voices</code>
+            <p>Obtiene la lista de todas las voces disponibles en ElevenLabs.</p>
+        </div>
+
+        <div class="endpoint">
+            <span class="method get">GET</span>
+            <code>/api/elevenlabs</code>
+            <p>Obtiene el historial de conversaciones de voz.</p>
+        </div>
+        
+        <div class="endpoint">
+            <span class="method post">POST</span>
+            <code>/api/elevenlabs</code>
+            <p>Crea una nueva conversación de voz. Requiere <code>text</code> y <code>voice_id</code> en el cuerpo (body) de la solicitud.</p>
+        </div>
+
+    </div>
+</body>
+</html> 
