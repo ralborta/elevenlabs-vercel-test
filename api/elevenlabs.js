@@ -5,17 +5,27 @@ const CACHE_TTL_SECONDS = 300; // 5 minutos de caché
 
 // Force redeploy
 export default async function handler(req, res) {
+  const apiKey = process.env.ELEVENLABS_API_KEY;
+  const kvUrl = process.env.KV_URL || process.env.KV_REST_API_URL;
+  const kvToken = process.env.KV_TOKEN;
+
+  const missingVars = [];
+  if (!apiKey) missingVars.push('ELEVENLABS_API_KEY');
+  if (!kvUrl) missingVars.push('KV_URL o KV_REST_API_URL');
+  if (!kvToken) missingVars.push('KV_TOKEN');
+
+  if (missingVars.length > 0) {
+    const errorMsg = `Error: Faltan las siguientes variables de entorno en Vercel: ${missingVars.join(', ')}.`;
+    console.error(errorMsg);
+    return res.status(500).json({ 
+        error: errorMsg,
+        details: 'Por favor, ve a la configuración de tu proyecto en Vercel, sección "Settings" > "Environment Variables" y asegúrate de que están definidas y asignadas al entorno de Producción.'
+    });
+  }
+
   try {
-    const apiKey = process.env.ELEVENLABS_API_KEY;
-    const kvUrl = process.env.KV_URL || process.env.KV_REST_API_URL;
-    const kvToken = process.env.KV_TOKEN;
-
-    if (!apiKey || !kvUrl || !kvToken) {
-      return res.status(500).json({ error: 'Faltan variables de entorno del servidor. Asegúrate de conectar Vercel KV y la API Key.' });
-    }
-
     const kvClient = createClient({ url: kvUrl, token: kvToken });
-    const { startDate, endDate } = req.query;
+    const { startDate, endDate, force_refresh } = req.query;
     
     // Usamos una clave de caché versionada para poder invalidarla en el futuro si es necesario.
     const cacheKey = `v3:conversations:${startDate || 'all'}:${endDate || 'all'}`;
