@@ -12,7 +12,7 @@ export default async function handler(req, res) {
       return res.status(500).json({ error: 'Faltan variables de entorno del servidor. Asegúrate de conectar Vercel KV y la API Key.' });
     }
 
-    const kvClient = createClient({ url: kvUrl, token: kvToken });
+    const kvClient = createClient();
     const { startDate, endDate, force_refresh } = req.query;
     
     const cacheKey = `v2:conversations:${startDate || 'all'}:${endDate || 'all'}`;
