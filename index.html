@@ -73,26 +73,18 @@
 
             const startDate = document.getElementById('startDate').value;
             const endDate = document.getElementById('endDate').value;
-            const apiUrl = new URL('/api/elevenlabs', window.location.origin);
-            if (startDate) apiUrl.searchParams.append('startDate', startDate);
-            if (endDate) apiUrl.searchParams.append('endDate', endDate);
 
             try {
+                const apiUrl = new URL('/api/elevenlabs', window.location.origin);
+                if (startDate) apiUrl.searchParams.append('startDate', startDate);
+                if (endDate) apiUrl.searchParams.append('endDate', endDate);
+                
                 const response = await fetch(apiUrl.toString());
+                const data = await response.json();
 
                 if (!response.ok) {
-                    // Intenta leer el JSON de error del backend para un mensaje más detallado
-                    const errorData = await response.json().catch(() => ({
-                        error: `Error del servidor (HTTP ${response.status})`,
-                        details: 'No se pudo obtener una respuesta con detalles del error desde el API.'
-                    }));
-                    
-                    const error = new Error(errorData.error);
-                    error.details = errorData.details;
-                    throw error;
+                    throw new Error(data.error || `Error ${response.status}`);
                 }
-
-                const data = await response.json();
 
                 if (data.totalCalls > 0) {
                     updateKPIs(data);
@@ -104,8 +96,10 @@
                     message.innerText = 'No se encontraron conversaciones para el rango seleccionado.';
                 }
             } catch (error) {
-                console.error('Error al obtener las estadísticas:', error);
-                message.innerText = `Error al cargar los datos: ${error.message}. Revisa la consola.`;
+                console.error('Error al cargar los datos:', error);
+                message.innerText = `Error al cargar los datos: ${error.message}`;
+            } finally {
+                document.getElementById('loading-spinner').style.display = 'none';
             }
         }
 

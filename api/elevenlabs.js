@@ -1,112 +1,115 @@
 import { createClient } from '@vercel/kv';
-import { kv } from '@vercel/kv';
 
 const CACHE_TTL_SECONDS = 300; // 5 minutos de caché
 
-// Force redeploy
 export default async function handler(req, res) {
-  const apiKey = process.env.ELEVENLABS_API_KEY;
-  const kvUrl = process.env.KV_URL || process.env.KV_REST_API_URL;
-  const kvToken = process.env.KV_TOKEN;
-
-  const missingVars = [];
-  if (!apiKey) missingVars.push('ELEVENLABS_API_KEY');
-  if (!kvUrl) missingVars.push('KV_URL o KV_REST_API_URL');
-  if (!kvToken) missingVars.push('KV_TOKEN');
-
-  if (missingVars.length > 0) {
-    const errorMsg = `Error: Faltan las siguientes variables de entorno en Vercel: ${missingVars.join(', ')}.`;
-    const availableVars = Object.keys(process.env);
-    const details = `Por favor, revisa la configuración en Vercel. Variables de entorno que SÍ se detectaron (${availableVars.length}): [${availableVars.join(', ')}]`;
-
-    console.error(errorMsg);
-    console.log('Available ENV VARS:', availableVars);
-
-    return res.status(500).json({ 
-        error: errorMsg,
-        details: details
-    });
-  }
-
   try {
+    const apiKey = process.env.ELEVENLABS_API_KEY;
+    const kvUrl = process.env.KV_URL;
+    const kvToken = process.env.KV_TOKEN;
+
+    if (!apiKey || !kvUrl || !kvToken) {
+      return res.status(500).json({ error: 'Faltan variables de entorno del servidor. Asegúrate de conectar Vercel KV y la API Key.' });
+    }
+
     const kvClient = createClient({ url: kvUrl, token: kvToken });
     const { startDate, endDate, force_refresh } = req.query;
     
-    // Usamos una clave de caché versionada para poder invalidarla en el futuro si es necesario.
-    const cacheKey = `v3:conversations:${startDate || 'all'}:${endDate || 'all'}`;
+    const cacheKey = `v2:conversations:${startDate || 'all'}:${endDate || 'all'}`;
 
-    let cachedData = await kvClient.get(cacheKey);
-    if (cachedData) {
-      // Devolver datos del caché inmediatamente si existen.
-      return res.status(200).json(cachedData);
+    if (force_refresh !== 'true') {
+      const cachedData = await kvClient.get(cacheKey);
+      if (cachedData) {
+        return res.status(200).json(cachedData);
+      }
     }
 
-    // Si no hay caché, obtener de ElevenLabs con paginación completa.
-    let allConversations = [];
-    let hasMore = true;
-    let nextCursor = null;
-    const baseUrl = 'https://api.elevenlabs.io/v1/convai/conversations';
-    
-    while (hasMore) {
-        const url = new URL(baseUrl);
-        if (startDate) url.searchParams.append('call_start_after_unix', Math.floor(new Date(startDate).getTime() / 1000));
-        if (endDate) {
-            const endOfDay = new Date(endDate);
-            endOfDay.setHours(23, 59, 59, 999);
-            url.searchParams.append('call_start_before_unix', Math.floor(endOfDay.getTime() / 1000));
-        }
-        url.searchParams.append('page_size', 100);
-        if (nextCursor) url.searchParams.set('cursor', nextCursor);
-        
-        const response = await fetch(url.toString(), {
-            method: 'GET',
-            headers: { 'xi-api-key': apiKey, 'Content-Type': 'application/json' }
-        });
-        
-        const pageData = await response.json();
+    const allConversations = await fetchAllPages(apiKey, startDate, endDate);
+    const processedData = processConversations(allConversations);
 
-        if (!response.ok) {
-            throw new Error(`Error de ElevenLabs: ${response.status} - ${JSON.stringify(pageData)}`);
-        }
-
-        if (pageData.conversations) {
-            allConversations.push(...pageData.conversations);
-        }
-        hasMore = pageData.has_more;
-        nextCursor = pageData.next_cursor;
-    }
+    await kvClient.set(cacheKey, processedData, { ex: CACHE_TTL_SECONDS });
     
-    const stats = processConversations(allConversations);
-
-    // Guardar los resultados procesados en el caché para futuras peticiones.
-    await kvClient.set(cacheKey, stats, { ex: CACHE_TTL_SECONDS });
-    
-    return res.status(200).json(stats);
+    res.status(200).json(processedData);
 
   } catch (error) {
-    console.error('Error en el backend:', error);
-    return res.status(500).json({ error: 'Error interno del servidor', details: error.message });
+    console.error('Error en el API handler:', error);
+    res.status(500).json({ error: 'Error interno del servidor al procesar la solicitud.', details: error.message });
   }
 }
 
-function processConversations(conversations) {
-    const totalCalls = conversations.length;
-    if (totalCalls === 0) {
-        return { totalCalls: 0, totalDurationSecs: 0, averageDurationSecs: 0, callsByAgent: {}, callsOverTime: [], conversations: [] };
-    }
-    const totalDurationSecs = conversations.reduce((sum, conv) => sum + (conv.call_duration_secs || 0), 0);
-    const averageDurationSecs = totalDurationSecs / totalCalls;
-    const callsByAgent = conversations.reduce((acc, conv) => {
-        const agentName = conv.agent_name || 'Desconocido';
-        acc[agentName] = (acc[agentName] || 0) + 1;
-        return acc;
-    }, {});
-    const callsOverTime = conversations.reduce((acc, conv) => {
-        const date = new Date(conv.start_time_unix_secs * 1000).toISOString().split('T')[0];
-        const existing = acc.find(item => item.date === date);
-        if (existing) { existing.count++; } else { acc.push({ date: date, count: 1 }); }
-        return acc;
-    }, []).sort((a, b) => new Date(a.date) - new Date(b.date));
+async function fetchAllPages(apiKey, startDate, endDate) {
+  let allConversations = [];
+  let nextUrl = `https://api.elevenlabs.io/v1/convai/conversations`;
+  const params = new URLSearchParams();
+  if(startDate) params.append('start_date', startDate);
+  if(endDate) params.append('end_date', endDate);
+  
+  const initialParams = params.toString();
+  if (initialParams) {
+    nextUrl += `?${initialParams}`;
+  }
 
-    return { totalCalls, totalDurationSecs, averageDurationSecs: Math.round(averageDurationSecs), callsByAgent, callsOverTime, conversations: conversations.sort((a, b) => b.start_time_unix_secs - a.start_time_unix_secs) };
+  while (nextUrl) {
+    const response = await fetch(nextUrl, {
+      headers: { 'xi-api-key': apiKey }
+    });
+    
+    if (!response.ok) {
+        const errorBody = await response.text();
+        throw new Error(`Error de la API de ElevenLabs: ${response.status} ${response.statusText} - ${errorBody}`);
+    }
+
+    const data = await response.json();
+    allConversations = allConversations.concat(data.conversations);
+    
+    // La API no parece tener paginación para este endpoint, por lo que el bucle se ejecutará una vez.
+    // Se mantiene como una salvaguarda por si se añade en el futuro.
+    nextUrl = null; 
+  }
+
+  return allConversations;
+}
+
+function processConversations(conversations) {
+  if (!conversations || conversations.length === 0) {
+    return {
+      totalCalls: 0,
+      avgDurationSeconds: 0,
+      totalDurationSeconds: 0,
+      callsByProvider: {},
+      callsOverTime: {},
+      detailedCalls: []
+    };
+  }
+
+  const totalDurationSeconds = conversations.reduce((acc, call) => acc + (call.end_time - call.start_time), 0);
+  
+  const callsByProvider = conversations.reduce((acc, call) => {
+    const provider = call.provider || 'Desconocido';
+    acc[provider] = (acc[provider] || 0) + 1;
+    return acc;
+  }, {});
+
+  const callsOverTime = conversations.reduce((acc, call) => {
+    const date = new Date(call.start_time * 1000).toISOString().split('T')[0]; // Agrupar por día
+    acc[date] = (acc[date] || 0) + 1;
+    return acc;
+  }, {});
+
+  const detailedCalls = conversations.map(call => ({
+    id: call.conversation_id,
+    startTime: new Date(call.start_time * 1000).toLocaleString(),
+    endTime: new Date(call.end_time * 1000).toLocaleString(),
+    duration: call.end_time - call.start_time,
+    provider: call.provider || 'Desconocido'
+  })).sort((a, b) => new Date(b.startTime) - new Date(a.startTime));
+
+  return {
+    totalCalls: conversations.length,
+    avgDurationSeconds: totalDurationSeconds / conversations.length,
+    totalDurationSeconds: totalDurationSeconds,
+    callsByProvider: callsByProvider,
+    callsOverTime: Object.fromEntries(Object.entries(callsOverTime).sort()), // Ordenar por fecha
+    detailedCalls: detailedCalls
+  };
 } 
