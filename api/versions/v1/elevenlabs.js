@@ -5,29 +5,47 @@ const CACHE_TTL_SECONDS = 300; // 5 minutos de caché
 export default async function handler(req, res) {
   try {
     const apiKey = process.env.ELEVENLABS_API_KEY;
+
+    if (!apiKey) {
+      return res.status(500).json({ error: 'Falta la variable de entorno ELEVENLABS_API_KEY del servidor.' });
+    }
+
+    // Lógica de caché deshabilitada temporalmente
+    /* 
     const kvUrl = process.env.KV_URL;
     const kvToken = process.env.KV_TOKEN;
 
-    if (!apiKey || !kvUrl || !kvToken) {
-      return res.status(500).json({ error: 'Faltan variables de entorno del servidor. Asegúrate de conectar Vercel KV y la API Key.' });
-    }
+    if (!kvUrl || !kvToken) {
+      // No bloqueamos, solo lo notificamos en consola por ahora
+      console.warn("Vercel KV no está configurado. La caché está deshabilitada.");
+    } else {
+      const kvClient = createClient();
+      const { force_refresh } = req.query;
+      const cacheKey = `v1:conversations:${startDate || 'all'}:${endDate || 'all'}`;
 
-    const kvClient = createClient();
-    const { startDate, endDate, force_refresh } = req.query;
-    
-    const cacheKey = `v1:conversations:${startDate || 'all'}:${endDate || 'all'}`;
-
-    if (force_refresh !== 'true') {
-      const cachedData = await kvClient.get(cacheKey);
-      if (cachedData) {
-        return res.status(200).json(cachedData);
+      if (force_refresh !== 'true') {
+        const cachedData = await kvClient.get(cacheKey);
+        if (cachedData) {
+          console.log("Sirviendo respuesta desde la caché de Vercel KV.");
+          return res.status(200).json(cachedData);
+        }
       }
     }
+    */
 
+    const { startDate, endDate } = req.query;
     const allConversations = await fetchAllPages(apiKey, startDate, endDate);
     const processedData = processConversations(allConversations);
 
-    await kvClient.set(cacheKey, processedData, { ex: CACHE_TTL_SECONDS });
+    // Guardado en caché deshabilitado temporalmente
+    /*
+    if (process.env.KV_URL && process.env.KV_TOKEN) {
+       const kvClient = createClient();
+       const cacheKey = `v1:conversations:${startDate || 'all'}:${endDate || 'all'}`;
+       await kvClient.set(cacheKey, processedData, { ex: CACHE_TTL_SECONDS });
+       console.log("Respuesta guardada en la caché de Vercel KV.");
+    }
+    */
     
     res.status(200).json(processedData);
 

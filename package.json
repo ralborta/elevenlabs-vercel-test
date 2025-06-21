@@ -6,8 +6,8 @@
     "node": "18.x"
   },
   "scripts": {
-    "deploy": "vercel --prod",
-    "deploy:staging": "vercel",
+    "deploy": "npx vercel --prod",
+    "deploy:staging": "npx vercel",
     "rollback": "echo 'Rollback command - implementar según necesidad'",
     "version:current": "node scripts/version-manager.js current",
     "version:set": "node scripts/version-manager.js set",
