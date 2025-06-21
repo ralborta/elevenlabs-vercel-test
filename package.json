@@ -5,6 +5,14 @@
   "engines": {
     "node": "18.x"
   },
+  "scripts": {
+    "deploy": "vercel --prod",
+    "deploy:staging": "vercel",
+    "rollback": "echo 'Rollback command - implementar según necesidad'",
+    "version:current": "node scripts/version-manager.js current",
+    "version:set": "node scripts/version-manager.js set",
+    "version:help": "node scripts/version-manager.js help"
+  },
   "dependencies": {
     "@vercel/kv": "^2.0.0"
   }

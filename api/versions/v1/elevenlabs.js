@@ -1,59 +1,39 @@
 import { createClient } from '@vercel/kv';
-import { getVersionConfig, DEFAULT_VERSION } from './versions/config.js';
 
 const CACHE_TTL_SECONDS = 300; // 5 minutos de caché
 
 export default async function handler(req, res) {
   try {
-    // Obtener la versión solicitada (por defecto v1)
-    const { version = DEFAULT_VERSION } = req.query;
-    const versionConfig = getVersionConfig(version);
-    
-    // Redirigir a la versión específica
-    const targetUrl = new URL(versionConfig.endpoint, `${req.headers['x-forwarded-proto'] || 'https'}://${req.headers.host}`);
-    
-    // Copiar los query parameters excepto 'version'
-    const queryParams = new URLSearchParams();
-    Object.keys(req.query).forEach(key => {
-      if (key !== 'version') {
-        queryParams.append(key, req.query[key]);
-      }
-    });
-    
-    if (queryParams.toString()) {
-      targetUrl.search = queryParams.toString();
+    const apiKey = process.env.ELEVENLABS_API_KEY;
+    const kvUrl = process.env.KV_URL;
+    const kvToken = process.env.KV_TOKEN;
+
+    if (!apiKey || !kvUrl || !kvToken) {
+      return res.status(500).json({ error: 'Faltan variables de entorno del servidor. Asegúrate de conectar Vercel KV y la API Key.' });
     }
+
+    const kvClient = createClient();
+    const { startDate, endDate, force_refresh } = req.query;
     
-    // Hacer la llamada interna a la versión específica
-    const response = await fetch(targetUrl.toString(), {
-      method: req.method,
-      headers: {
-        'Content-Type': 'application/json',
-        'Authorization': req.headers.authorization || '',
-        'xi-api-key': req.headers['xi-api-key'] || ''
-      },
-      body: req.method !== 'GET' ? JSON.stringify(req.body) : undefined
-    });
-    
-    const data = await response.json();
-    
-    // Agregar información de la versión en la respuesta
-    res.status(response.status).json({
-      ...data,
-      _version: versionConfig.name,
-      _versionInfo: {
-        status: versionConfig.status,
-        description: versionConfig.description
+    const cacheKey = `v1:conversations:${startDate || 'all'}:${endDate || 'all'}`;
+
+    if (force_refresh !== 'true') {
+      const cachedData = await kvClient.get(cacheKey);
+      if (cachedData) {
+        return res.status(200).json(cachedData);
       }
-    });
+    }
+
+    const allConversations = await fetchAllPages(apiKey, startDate, endDate);
+    const processedData = processConversations(allConversations);
+
+    await kvClient.set(cacheKey, processedData, { ex: CACHE_TTL_SECONDS });
     
+    res.status(200).json(processedData);
+
   } catch (error) {
-    console.error('Error en el router de versiones:', error);
-    res.status(500).json({ 
-      error: 'Error interno del servidor',
-      details: error.message,
-      _version: DEFAULT_VERSION
-    });
+    console.error('Error en el API handler:', error);
+    res.status(500).json({ error: 'Error interno del servidor al procesar la solicitud.', details: error.message });
   }
 }
 

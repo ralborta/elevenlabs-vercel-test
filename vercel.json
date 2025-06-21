@@ -1,0 +1,31 @@
+{
+  "version": 2,
+  "functions": {
+    "api/elevenlabs.js": {
+      "maxDuration": 30
+    },
+    "api/versions/v1/elevenlabs.js": {
+      "maxDuration": 30
+    },
+    "api/versions/v2/elevenlabs.js": {
+      "maxDuration": 30
+    }
+  },
+  "routes": [
+    {
+      "src": "/api/versions/(.*)",
+      "dest": "/api/versions/$1"
+    },
+    {
+      "src": "/api/elevenlabs",
+      "dest": "/api/elevenlabs.js"
+    },
+    {
+      "src": "/api/versions",
+      "dest": "/api/versions.js"
+    }
+  ],
+  "env": {
+    "NODE_ENV": "production"
+  }
+} 
