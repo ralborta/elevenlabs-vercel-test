@@ -1,5 +1,5 @@
 // api/versions/v1/elevenlabs.js
-// Versión simplificada que apunta al endpoint de Voice Chat History
+// Versión que imprime los datos crudos en los logs del servidor para una depuración más sencilla.
 
 export default async function handler(req, res) {
   try {
@@ -24,8 +24,15 @@ export default async function handler(req, res) {
         throw new Error(`Error de la API de ElevenLabs (${response.status}): ${errorBody}`);
     }
 
-    // 3. Devolvemos los datos crudos, sin tocar, como pediste.
+    // 3. Devolvemos los datos crudos, sin tocar.
     const rawData = await response.json();
+
+    // 4. ¡IMPORTANTE! Imprimimos los datos en los logs del servidor para poder verlos.
+    console.log("=== INICIO DE DATOS CRUDOS DE ELEVENLABS ===");
+    console.log(JSON.stringify(rawData, null, 2));
+    console.log("=== FIN DE DATOS CRUDOS DE ELEVENLABS ===");
+
+    // 5. Enviamos la respuesta al navegador (aunque no la usaremos por ahora).
     res.status(200).json(rawData);
 
   } catch (error) {
