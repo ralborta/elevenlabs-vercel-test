@@ -8,8 +8,8 @@ export default async function handler(req, res) {
       return res.status(500).json({ error: 'Falta la variable de entorno ELEVENLABS_API_KEY.' });
     }
 
-    // 1. Apuntamos al endpoint que parece ser el correcto.
-    const url = 'https://api.elevenlabs.io/v1/voice-chat/history';
+    // 1. Apuntamos al endpoint CONFIRMADO por el usuario.
+    const url = 'https://api.elevenlabs.io/v1/history';
 
     // 2. Hacemos la llamada.
     const response = await fetch(url, {
